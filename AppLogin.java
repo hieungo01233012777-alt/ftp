@@ -1,0 +1,427 @@
+import javax.swing.*;
+import java.awt.*;
+import java.util.Calendar;
+import javax.swing.border.EmptyBorder;
+import java.util.Properties;
+import java.util.Random;
+import jakarta.mail.*;
+import jakarta.mail.internet.InternetAddress;
+import jakarta.mail.internet.MimeMessage;
+
+public class AppLogin extends JFrame {
+    private CardLayout cardLayout = new CardLayout();
+    private JPanel mainPanel = new JPanel(cardLayout);
+    // --- CẤU HÌNH GỬI EMAIL ---
+    private static final String FROM_EMAIL = "miku01233012777@gmail.com"; 
+    private static final String APP_PASSWORD = "tdihxzreznttyvss"; 
+
+    // --- LƯU TRỮ OTP ĐỂ XÁC THỰC ---
+    private String generatedOtp = ""; 
+
+    // Biến toàn cục để liên kết dữ liệu giữa nút bấm và ô nhập liệu
+    private JTextField txtEmailInput;
+    private JTextField txtOtpInput;
+
+    public AppLogin() {
+        setTitle("Hệ thống Đăng nhập");
+        setSize(400, 700); 
+        setDefaultCloseOperation(EXIT_ON_CLOSE);
+        setLocationRelativeTo(null);
+
+        // Thêm các trang vào CardLayout//
+        mainPanel.add(createLoginPanel(), "LOGIN");
+        mainPanel.add(createEmailPanel(), "EMAIL");
+        mainPanel.add(createPhonePanel(), "PHONE");
+        mainPanel.add(createRegisterPanel(), "REGISTER");
+        mainPanel.add(createForgotPanel(), "FORGOT");
+
+        add(mainPanel);
+    }
+
+    // 1. Trang Đăng nhập chính
+    private JPanel createLoginPanel() {
+        JPanel p = new JPanel();
+        p.setLayout(new BoxLayout(p, BoxLayout.Y_AXIS));
+        p.setBorder(new EmptyBorder(30, 40, 30, 40));
+
+        JLabel title = new JLabel("ĐĂNG NHẬP", JLabel.CENTER);
+        title.setAlignmentX(Component.CENTER_ALIGNMENT);
+        title.setFont(new Font("Arial", Font.BOLD, 20));
+
+        JTextField txtUser = createStyledTextField("Tên đăng nhập");
+        JPasswordField txtPass = createStyledPasswordField("Mật khẩu");
+
+        JButton btnLogin = new JButton("Đăng nhập");
+        btnLogin.setAlignmentX(Component.CENTER_ALIGNMENT);
+        btnLogin.setMaximumSize(new Dimension(300, 40));
+        
+        btnLogin.addActionListener(e -> {
+            String username = txtUser.getText().trim();
+            String password = new String(txtPass.getPassword());
+
+            // Kiểm tra rỗng
+            if (username.isEmpty() || password.isEmpty()) {
+                JOptionPane.showMessageDialog(this, "Vui lòng nhập đầy đủ tên đăng nhập và mật khẩu!", "Cảnh báo", JOptionPane.WARNING_MESSAGE);
+                return;
+            }
+
+            // MÔ PHỎNG KIỂM TRA DATABASE//
+            if (username.equals("admin") && password.equals("admin")) {
+                JOptionPane.showMessageDialog(this, "Đăng nhập quyền Admin thành công!");
+                this.dispose(); // Đóng cửa sổ Đăng nhập
+                new ServerAdminApp().setVisible(true); // Mở cửa sổ Admin
+            } 
+            else if (username.equals("user") && password.equals("user")) {
+                JOptionPane.showMessageDialog(this, "Đăng nhập quyền User thành công!");
+                this.dispose(); // Đóng cửa sổ Đăng nhập
+                new ClientApp().setVisible(true); // Mở cửa sổ Client (User)
+            } 
+            else {
+                JOptionPane.showMessageDialog(this, "Sai tài khoản hoặc mật khẩu!\n(Gợi ý: dùng admin/admin hoặc user/user)", "Lỗi", JOptionPane.ERROR_MESSAGE);
+            }
+             // MÔ PHỎNG KIỂM TRA DATABASE//
+        });
+
+        JButton btnEmail = createStyledButton("Đăng nhập bằng Email", "EMAIL");
+        JButton btnPhone = createStyledButton("Đăng nhập bằng SĐT", "PHONE");
+        JButton btnRegister = createStyledButton("Chưa có tài khoản? Đăng ký", "REGISTER");
+        JButton btnForgot = createStyledButton("Quên mật khẩu?", "FORGOT"); 
+
+        p.add(title); p.add(Box.createRigidArea(new Dimension(0, 20)));
+        p.add(txtUser); p.add(Box.createRigidArea(new Dimension(0, 10)));
+        p.add(txtPass); p.add(Box.createRigidArea(new Dimension(0, 20)));
+        p.add(btnLogin); p.add(Box.createRigidArea(new Dimension(0, 10)));
+        p.add(btnEmail); p.add(Box.createRigidArea(new Dimension(0, 10)));
+        p.add(btnPhone); p.add(Box.createRigidArea(new Dimension(0, 20))); 
+        p.add(btnRegister); p.add(Box.createRigidArea(new Dimension(0, 10)));
+        p.add(btnForgot);
+
+        return p;
+    }
+
+    // 2. Trang Đăng nhập Email
+    private JPanel createEmailPanel() {
+        JPanel p = createBasePanel("ĐĂNG NHẬP BẰNG EMAIL");
+        
+        // Tạo các ô nhập liệu với biến cục bộ để dễ quản lý dữ liệu trong trang này
+        JTextField txtEmailInput = createStyledTextField("Nhập Email của bạn");
+        JTextField txtOtpInput = createStyledTextField("Nhập mã OTP");
+        
+        JButton btnSendOtp = new JButton("Gửi mã OTP");
+        btnSendOtp.setAlignmentX(Component.CENTER_ALIGNMENT);
+        btnSendOtp.setMaximumSize(new Dimension(300, 40));
+        
+        // --- XỬ LÝ SỰ KIỆN NÚT GỬI OTP ---
+        btnSendOtp.addActionListener(e -> {
+            String email = txtEmailInput.getText().trim();
+            if (email.isEmpty()) {
+                JOptionPane.showMessageDialog(this, "Vui lòng nhập Email trước khi nhận mã!", "Thông báo", JOptionPane.WARNING_MESSAGE);
+                return;
+            }
+            
+            // Sinh mã OTP ngẫu nhiên gồm 6 chữ số
+            generatedOtp = String.valueOf(100000 + new java.util.Random().nextInt(900000));
+            
+            // Chạy ngầm Thread để gửi Mail, không lo treo nút bấm hay đơ giao diện
+            new Thread(() -> {
+                sendOtpEmail(email, "Khách hàng", generatedOtp);
+            }).start();
+            
+            JOptionPane.showMessageDialog(this, "Đang gửi mã OTP đến: " + email + "\nVui lòng kiểm tra hộp thư!");
+        });
+
+        JButton btnLoginMail = new JButton("Đăng nhập");
+        btnLoginMail.setAlignmentX(Component.CENTER_ALIGNMENT);
+        btnLoginMail.setMaximumSize(new Dimension(300, 40));
+        
+        // --- XỬ LÝ SỰ KIỆN NÚT ĐĂNG NHẬP (XÁC THỰC OTP) ---
+        btnLoginMail.addActionListener(e -> {
+            String inputOtp = txtOtpInput.getText().trim();
+            
+            if (inputOtp.isEmpty()) {
+                JOptionPane.showMessageDialog(this, "Vui lòng nhập mã OTP đã gửi về mail!", "Thông báo", JOptionPane.WARNING_MESSAGE);
+                return;
+            }
+            
+            // Tiến hành đối chiếu mã OTP người dùng nhập vào
+            if (!generatedOtp.isEmpty() && inputOtp.equals(generatedOtp)) {
+                JOptionPane.showMessageDialog(this, "Xác thực OTP đăng nhập thành công!");
+                
+                // --- ĐÓNG CỬA SỔ ĐĂNG NHẬP VÀ MỞ GIAO DIỆN CLIENT ---
+                this.dispose();
+                new ClientApp().setVisible(true);
+            } else {
+                JOptionPane.showMessageDialog(this, "Mã OTP không chính xác!", "Lỗi xác thực", JOptionPane.ERROR_MESSAGE);
+            }
+        });
+
+        // Sắp xếp các thành phần lên giao diện Panel Email
+        p.add(txtEmailInput);
+        p.add(Box.createRigidArea(new Dimension(0, 10)));
+        p.add(btnSendOtp);
+        p.add(Box.createRigidArea(new Dimension(0, 10)));
+        p.add(txtOtpInput); 
+        p.add(Box.createRigidArea(new Dimension(0, 20)));
+        p.add(btnLoginMail);
+        p.add(Box.createRigidArea(new Dimension(0, 10)));
+        p.add(createStyledButton("Quay lại", "LOGIN"));
+        
+        return p;
+    }
+
+    // 3. Trang Đăng nhập SĐT
+    private JPanel createPhonePanel() {
+        JPanel p = createBasePanel("ĐĂNG NHẬP BẰNG SĐT");
+        p.add(createStyledTextField("Nhập số điện thoại"));
+        p.add(Box.createRigidArea(new Dimension(0, 10)));
+        p.add(createStyledButton("Gửi mã OTP", null));
+        p.add(Box.createRigidArea(new Dimension(0, 10)));
+        p.add(createStyledTextField("Nhập mã OTP")); 
+        p.add(Box.createRigidArea(new Dimension(0, 20)));
+        
+        JButton btnLoginPhone = new JButton("Đăng nhập");
+        btnLoginPhone.setAlignmentX(Component.CENTER_ALIGNMENT);
+        btnLoginPhone.setMaximumSize(new Dimension(300, 40));
+        btnLoginPhone.addActionListener(e -> {
+             this.dispose();
+             new ClientApp().setVisible(true);
+        });
+        p.add(btnLoginPhone);
+
+        p.add(Box.createRigidArea(new Dimension(0, 10)));
+        p.add(createStyledButton("Quay lại", "LOGIN"));
+        return p;
+    }
+
+    // 4. Trang Quên mật khẩu
+    private JPanel createForgotPanel() {
+        JPanel p = createBasePanel("QUÊN MẬT KHẨU");
+        p.add(createStyledTextField("Nhập Email hoặc SĐT"));
+        p.add(Box.createRigidArea(new Dimension(0, 10)));
+        p.add(createStyledButton("Gửi mã OTP", null));
+        p.add(Box.createRigidArea(new Dimension(0, 10)));
+        p.add(createStyledTextField("Nhập mã OTP")); 
+        p.add(Box.createRigidArea(new Dimension(0, 20)));
+        p.add(createStyledButton("Xác nhận đổi MK", "LOGIN")); 
+        p.add(Box.createRigidArea(new Dimension(0, 10)));
+        p.add(createStyledButton("Quay lại", "LOGIN"));
+        return p;
+    }
+
+   // 5. Trang Đăng ký (Ràng buộc thứ tự: Họ tên -> Email -> Nhận mã -> OTP -> Đăng ký)
+    private boolean isOtpSent = false; // Biến cờ hiệu kiểm tra đã bấm nhận OTP chưa
+
+    private JPanel createRegisterPanel() {
+        JPanel p = createBasePanel("ĐĂNG KÝ TÀI KHOẢN");
+        
+        // Tạo các ô nhập liệu
+        JTextField txtFullName = createStyledTextField("Họ và tên");
+        JTextField txtContact = createStyledTextField("Email"); // Tập trung vào Email theo yêu cầu của bạn
+        JTextField txtRegisterOtp = createStyledTextField("Nhập mã OTP");
+        
+        JButton btnGetOtp = new JButton("Nhận mã xác nhận");
+        btnGetOtp.setAlignmentX(Component.CENTER_ALIGNMENT);
+        btnGetOtp.setMaximumSize(new Dimension(300, 40));
+        
+        // --- BƯỚC 1 & 2: NHẬP HỌ TÊN VÀ EMAIL RỒI MỚI CHO BẤM NHẬN OTP ---
+        btnGetOtp.addActionListener(e -> {
+            String fullName = txtFullName.getText().trim();
+            String email = txtContact.getText().trim();
+            
+            // 1. Kiểm tra Họ tên trống
+            if (fullName.isEmpty()) {
+                JOptionPane.showMessageDialog(this, "Bạn phải nhập Họ và tên trước!", "Lỗi quy trình", JOptionPane.WARNING_MESSAGE);
+                txtFullName.requestFocus();
+                return;
+            }
+            
+            // 2. Kiểm tra Email trống hoặc sai định dạng
+            if (email.isEmpty() || !email.contains("@")) {
+                JOptionPane.showMessageDialog(this, "Bạn phải nhập đúng định dạng Email sau khi điền họ tên!", "Lỗi quy trình", JOptionPane.WARNING_MESSAGE);
+                txtContact.requestFocus();
+                return;
+            }
+            
+            // Nếu thỏa mãn thì tiến hành sinh mã và gửi mail
+            generatedOtp = String.valueOf(100000 + new java.util.Random().nextInt(900000));
+            isOtpSent = true; // Bật cờ xác nhận đã gửi OTP thành công
+            
+            new Thread(() -> {
+                sendOtpEmail(email, fullName, generatedOtp);
+            }).start();
+            
+            JOptionPane.showMessageDialog(this, "Hệ thống đã gửi mã OTP đến Email của bạn. Vui lòng kiểm tra!");
+        });
+
+        JButton btnCompleteRegister = new JButton("Hoàn tất Đăng ký");
+        btnCompleteRegister.setAlignmentX(Component.CENTER_ALIGNMENT);
+        btnCompleteRegister.setMaximumSize(new Dimension(300, 40));
+        
+        // --- BƯỚC 3: NHẬP OTP ĐỂ ĐỐI CHIẾU HOÀN TẤT ĐĂNG KÝ ---
+        btnCompleteRegister.addActionListener(e -> {
+            String inputOtp = txtRegisterOtp.getText().trim();
+            
+            // Kiểm tra xem đã qua bước nhận OTP chưa
+            if (!isOtpSent) {
+                JOptionPane.showMessageDialog(this, "Bạn chưa thực hiện bước nhận mã OTP xác thực!", "Lỗi quy trình", JOptionPane.ERROR_MESSAGE);
+                return;
+            }
+            
+            // Kiểm tra ô OTP trống
+            if (inputOtp.isEmpty()) {
+                JOptionPane.showMessageDialog(this, "Vui lòng nhập mã OTP đã được gửi về mail của bạn!", "Thông báo", JOptionPane.WARNING_MESSAGE);
+                txtRegisterOtp.requestFocus();
+                return;
+            }
+            
+            // Đối chiếu mã OTP cuối cùng
+            if (inputOtp.equals(generatedOtp)) {
+                JOptionPane.showMessageDialog(this, "Đăng ký tài khoản thành công!");
+                isOtpSent = false; // Reset lại trạng thái cờ
+                
+                // Đóng form đăng nhập, mở ClientApp
+                this.dispose(); 
+                new ClientApp().setVisible(true); 
+            } else {
+                JOptionPane.showMessageDialog(this, "Mã OTP không đúng! Vui lòng kiểm tra lại.", "Lỗi xác thực", JOptionPane.ERROR_MESSAGE);
+            }
+        });
+
+        // Đổ các component vào giao diện Panel theo thứ tự
+        p.add(txtFullName);
+        p.add(Box.createRigidArea(new Dimension(0, 10)));
+        p.add(createDOBPanel());
+        p.add(Box.createRigidArea(new Dimension(0, 10)));
+        p.add(createGenderPanel());
+        p.add(Box.createRigidArea(new Dimension(0, 10)));
+        p.add(txtContact);
+        p.add(Box.createRigidArea(new Dimension(0, 10)));
+        p.add(btnGetOtp);
+        p.add(Box.createRigidArea(new Dimension(0, 10)));
+        p.add(txtRegisterOtp);
+        p.add(Box.createRigidArea(new Dimension(0, 20)));
+        p.add(btnCompleteRegister);
+        p.add(Box.createRigidArea(new Dimension(0, 10)));
+        p.add(createStyledButton("Quay lại", "LOGIN"));
+        
+        return p;
+    }
+
+    // --- CÁC HÀM HỖ TRỢ ---
+
+    private JPanel createBasePanel(String titleText) {
+        JPanel p = new JPanel();
+        p.setLayout(new BoxLayout(p, BoxLayout.Y_AXIS));
+        p.setBorder(new EmptyBorder(30, 40, 30, 40));
+        
+        JLabel title = new JLabel(titleText, JLabel.CENTER);
+        title.setAlignmentX(Component.CENTER_ALIGNMENT);
+        title.setFont(new Font("Arial", Font.BOLD, 20));
+        p.add(title);
+        p.add(Box.createRigidArea(new Dimension(0, 20)));
+        return p;
+    }
+
+    private JTextField createStyledTextField(String title) {
+        JTextField tf = new JTextField();
+        tf.setMaximumSize(new Dimension(300, 40)); 
+        tf.setBorder(BorderFactory.createTitledBorder(title));
+        return tf;
+    }
+
+    private JPasswordField createStyledPasswordField(String title) {
+        JPasswordField pf = new JPasswordField();
+        pf.setMaximumSize(new Dimension(300, 40)); 
+        pf.setBorder(BorderFactory.createTitledBorder(title));
+        return pf;
+    }
+
+    private JPanel createDOBPanel() {
+        JPanel p = new JPanel();
+        p.setLayout(new BoxLayout(p, BoxLayout.X_AXIS)); 
+        p.setMaximumSize(new Dimension(300, 50));
+        p.setBorder(BorderFactory.createTitledBorder("Ngày sinh"));
+        p.setAlignmentX(Component.CENTER_ALIGNMENT);
+
+        String[] days = new String[31];
+        for (int i = 1; i <= 31; i++) days[i - 1] = String.format("%02d", i);
+
+        String[] months = new String[12];
+        for (int i = 1; i <= 12; i++) months[i - 1] = String.format("%02d", i);
+
+        int currentYear = Calendar.getInstance().get(Calendar.YEAR);
+        String[] years = new String[100]; 
+        for (int i = 0; i < 100; i++) years[i] = String.valueOf(currentYear - i);
+
+        p.add(new JLabel(" Ngày: ")); p.add(new JComboBox<>(days));
+        p.add(new JLabel(" Tháng: ")); p.add(new JComboBox<>(months));
+        p.add(new JLabel(" Năm: ")); p.add(new JComboBox<>(years));
+
+        return p;
+    }
+
+    private JPanel createGenderPanel() {
+        JPanel p = new JPanel(new FlowLayout(FlowLayout.LEFT));
+        p.setMaximumSize(new Dimension(300, 50));
+        p.setBorder(BorderFactory.createTitledBorder("Giới tính"));
+        p.setAlignmentX(Component.CENTER_ALIGNMENT); 
+
+        JRadioButton rbMale = new JRadioButton("Nam");
+        JRadioButton rbFemale = new JRadioButton("Nữ");
+
+        ButtonGroup bg = new ButtonGroup();
+        bg.add(rbMale);
+        bg.add(rbFemale);
+        rbMale.setSelected(true); 
+
+        p.add(rbMale);
+        p.add(rbFemale);
+
+        return p;
+    }
+
+    private JButton createStyledButton(String text, String targetPage) {
+        JButton btn = new JButton(text);
+        btn.setAlignmentX(Component.CENTER_ALIGNMENT);
+        btn.setMaximumSize(new Dimension(300, 40)); 
+        if (targetPage != null) {
+            btn.addActionListener(e -> cardLayout.show(mainPanel, targetPage));
+        }
+        return btn;
+    }
+
+    public static void main(String[] args) {
+        SwingUtilities.invokeLater(() -> new AppLogin().setVisible(true));
+    }
+//Hàm sendOtpEmail
+    private void sendOtpEmail(String toEmail, String username, String otpCode) {
+        Properties props = new Properties();
+        props.put("mail.smtp.auth", "true");
+        props.put("mail.smtp.starttls.enable", "true");
+        props.put("mail.smtp.host", "smtp.gmail.com");
+        props.put("mail.smtp.port", "587");
+
+        Session session = Session.getInstance(props, new Authenticator() {
+            @Override
+            protected PasswordAuthentication getPasswordAuthentication() {
+                return new PasswordAuthentication(FROM_EMAIL, APP_PASSWORD);
+            }
+        });
+
+        try {
+            Message message = new MimeMessage(session);
+            message.setFrom(new InternetAddress(FROM_EMAIL));
+            message.setRecipients(Message.RecipientType.TO, InternetAddress.parse(toEmail));
+            message.setSubject("[HUFLIT] Ma OTP Dang Ky Tai Khoan");
+            
+            String htmlContent = "<h3>Ma OTP dang ky cua ban la: " + otpCode + "</h3>";
+            message.setContent(htmlContent, "text/html; charset=utf-8");
+            
+            Transport.send(message);
+            System.out.println("Da gui mail OTP thanh cong.");
+        } catch (MessagingException e) {
+            e.printStackTrace();
+        }
+    }
+    
+}
